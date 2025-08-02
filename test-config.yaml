@@ -1,0 +1,33 @@
+api:
+  elevenlabs:
+    key: "test-api-key-for-validation-only"
+    url: "https://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb?output_format=mp3_44100_128"
+    test_payload: |
+      {
+        "text": "The first move is what sets everything in motion.",
+        "model_id": "eleven_multilingual_v2"
+      }
+
+mongodb:
+  enabled: true
+  dsn: "mongodb://localhost:27017"
+  database: "regproxy"
+  collection: "proxy"
+  timeout: 10
+
+daemon:
+  interval: 300
+  threads: 20
+  timeout: 10
+  log_level: "info"
+
+proxy:
+  sources_refresh_interval: 3600
+  max_crawl_workers: 15
+  test_sample_size: 100
+  keep_working_proxies: 50
+
+files:
+  working_proxies: "working_proxies.txt"
+  all_proxies: "proxies.txt" 
+  log_file: "daemon.log"

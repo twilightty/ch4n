@@ -1,0 +1,28 @@
+[Unit]
+Description=RegProxy Daemon - Proxy Testing Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=regproxy
+Group=regproxy
+WorkingDirectory=/opt/regproxy
+ExecStart=/opt/regproxy/regproxy-daemon -config /opt/regproxy/config.yaml
+Restart=always
+RestartSec=10
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/regproxy
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=regproxy
+
+[Install]
+WantedBy=multi-user.target
