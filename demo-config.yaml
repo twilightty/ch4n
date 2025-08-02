@@ -1,0 +1,34 @@
+api:
+  elevenlabs:
+    key: "test-key-for-demo"
+    url: "https://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb?output_format=mp3_44100_128"
+    test_payload: |
+      {
+        "text": "The first move is what sets everything in motion.",
+        "model_id": "eleven_multilingual_v2"
+      }
+
+# MongoDB configuration (optional)
+mongodb:
+  enabled: true
+  dsn: "mongodb://localhost:27017"
+  database: "regproxy"
+  collection: "proxy"
+  timeout: 10
+
+daemon:
+  interval: 300
+  threads: 5      # Reduced for demo
+  timeout: 10
+  log_level: "debug"  # Set to debug to see all proxy test results
+
+proxy:
+  sources_refresh_interval: 3600
+  max_crawl_workers: 5    # Reduced for demo
+  test_sample_size: 20    # Small sample for demo  
+  keep_working_proxies: 10
+
+files:
+  working_proxies: "working_proxies.txt"
+  all_proxies: "proxies.txt"
+  log_file: "regproxy.log"  # Log to file

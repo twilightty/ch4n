@@ -152,13 +152,23 @@ func (d *Daemon) crawlAndTestProxies() error {
 		d.logger.Info("Warning: Could not save all proxies: %v", err)
 	}
 
-	// Test a sample of proxies
+	// Test proxies - use all if sample size is -1 or 0, otherwise use sample
+	var testSample []string
 	sampleSize := d.config.Proxy.TestSampleSize
-	if len(proxies) < sampleSize {
-		sampleSize = len(proxies)
+	
+	if sampleSize <= 0 {
+		// Test all proxies
+		testSample = proxies
+		d.logger.Info("Testing ALL %d proxies (sample size disabled)", len(proxies))
+	} else {
+		// Test sample
+		if len(proxies) < sampleSize {
+			sampleSize = len(proxies)
+		}
+		testSample = proxies[:sampleSize]
+		d.logger.Info("Testing %d out of %d proxies (sample)", sampleSize, len(proxies))
 	}
 
-	testSample := proxies[:sampleSize]
 	return d.testProxies(testSample, "crawl")
 }
 
@@ -180,6 +190,12 @@ func (d *Daemon) testProxies(proxies []string, testType string) error {
 
 	start := time.Now()
 	d.logger.Info("Testing %d proxies (%s)...", len(proxies), testType)
+	
+	// Show progress for large batches
+	if len(proxies) > 1000 {
+		d.logger.Info("⏳ This is a large batch - testing %d proxies may take %d+ minutes...", 
+			len(proxies), len(proxies)/(d.config.Daemon.Threads*3)) // Rough estimate: 3 proxies per second per thread
+	}
 
 	// Test proxies
 	testCtx, cancel := context.WithTimeout(d.ctx, 10*time.Minute)
@@ -187,20 +203,20 @@ func (d *Daemon) testProxies(proxies []string, testType string) error {
 
 	results := d.tester.TestProxies(testCtx, proxies, d.config.Daemon.Threads)
 	
-	// Process results and log each proxy
+	// Process results and save working proxies immediately in batches
 	var workingProxies []string
-	var workingResults []storage.ProxyTestResult
+	var batchResults []storage.ProxyTestResult
+	batchSize := 10 // Save every 10 working proxies
 	
 	successCount := 0
-	for _, result := range results {
+	for i, result := range results {
 		if result.IsWorking {
 			successCount++
 			workingProxies = append(workingProxies, result.Proxy)
 			d.logger.Info("✅ WORKING: %s (latency: %dms)", result.Proxy, result.Latency.Milliseconds())
 			
-			// Only convert working proxies for MongoDB storage
+			// Prepare for MongoDB storage
 			if d.mongoStorage != nil {
-				// Parse IP and port from proxy address
 				parts := strings.Split(result.Proxy, ":")
 				ip := parts[0]
 				port := ""
@@ -212,12 +228,25 @@ func (d *Daemon) testProxies(proxies []string, testType string) error {
 					Address:   result.Proxy,
 					IP:        ip,
 					Port:      port,
-					Type:      "http", // Default to http
+					Type:      "http",
 					IsWorking: result.IsWorking,
 					Latency:   result.Latency,
 					Error:     result.Error,
 				}
-				workingResults = append(workingResults, storageResult)
+				batchResults = append(batchResults, storageResult)
+				
+				// Save batch when we have enough working proxies OR at the end
+				if len(batchResults) >= batchSize || i == len(results)-1 {
+					if len(batchResults) > 0 {
+						d.logger.Info("💾 Saving batch of %d working proxies to MongoDB...", len(batchResults))
+						if err := d.mongoStorage.SaveWorkingProxies(testCtx, batchResults); err != nil {
+							d.logger.Error("Failed to save batch to MongoDB: %v", err)
+						} else {
+							d.logger.Info("✅ Saved batch of %d working proxies to MongoDB", len(batchResults))
+						}
+						batchResults = nil // Reset batch
+					}
+				}
 			}
 		} else {
 			errorMsg := "unknown error"
@@ -234,23 +263,10 @@ func (d *Daemon) testProxies(proxies []string, testType string) error {
 	// Keep only the best proxies
 	if len(workingProxies) > d.config.Proxy.KeepWorkingProxies {
 		workingProxies = workingProxies[:d.config.Proxy.KeepWorkingProxies]
-		workingResults = workingResults[:d.config.Proxy.KeepWorkingProxies]
 	}
 
-	// Update working proxies
+	// Update working proxies in memory
 	d.workingProxies = workingProxies
-
-	// Save ONLY working proxies to MongoDB
-	if d.mongoStorage != nil && len(workingResults) > 0 {
-		d.logger.Info("💾 Storing %d working proxies to MongoDB...", len(workingResults))
-		if err := d.mongoStorage.SaveWorkingProxies(testCtx, workingResults); err != nil {
-			d.logger.Error("Failed to save working proxies to MongoDB: %v", err)
-		} else {
-			d.logger.Info("✅ Successfully stored %d working proxies to MongoDB", len(workingResults))
-		}
-	} else if d.mongoStorage != nil {
-		d.logger.Warn("No working proxies to store in MongoDB")
-	}
 
 	// Save working proxies to file
 	if err := d.saveWorkingProxies(); err != nil {

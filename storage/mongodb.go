@@ -258,7 +258,10 @@ func (m *MongoStorage) GetWorkingProxies(ctx context.Context, limit int) ([]stri
 	}
 
 	opts := options.Find().
-		SetSort(bson.M{"success_rate": -1, "latency_ms": 1}).
+		SetSort(bson.D{
+			{Key: "success_rate", Value: -1},
+			{Key: "latency_ms", Value: 1},
+		}).
 		SetLimit(int64(limit))
 
 	cursor, err := m.collection.Find(ctx, filter, opts)
